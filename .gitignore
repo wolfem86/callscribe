@@ -1,0 +1,7 @@
+.build/
+build/
+.swiftpm/
+Resources/AppIcon.icns
+*.p12
+*.pem
+.DS_Store
