@@ -119,6 +119,19 @@ public enum WAVRepair {
         return true
     }
 
+    /// Reads a 16-bit mono WAV written by `WAVWriter` as Float samples in −1...1.
+    public static func readSamples(url: URL) throws -> [Float] {
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        guard data.count > WAVWriter.headerSize else { return [] }
+        let count = (data.count - WAVWriter.headerSize) / 2
+        return data.withUnsafeBytes { raw in
+            let base = raw.baseAddress!.advanced(by: WAVWriter.headerSize)
+            return (0..<count).map { i in
+                Float(Int16(littleEndian: base.loadUnaligned(fromByteOffset: i * 2, as: Int16.self))) / 32768
+            }
+        }
+    }
+
     /// Duration in seconds based on the data size in the header.
     public static func duration(url: URL, sampleRate: Int = 16_000) -> Double {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return 0 }

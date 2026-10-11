@@ -89,7 +89,8 @@ final class MicCapture {
             self?.restart(reason: "audio engine configuration changed")
         }
         let name = CoreAudioUtil.defaultDevice(input: true).flatMap(CoreAudioUtil.deviceName) ?? "default input"
-        Log.info("Mic: capturing \(name)")
+        let format = engine.inputNode.outputFormat(forBus: 0)
+        Log.info("Mic: capturing \(name) (\(format.sampleRate) Hz, \(format.channelCount) ch, voice processing \(Settings.voiceProcessing ? "on" : "off"))")
         report(true, "Capturing \(name)")
     }
 

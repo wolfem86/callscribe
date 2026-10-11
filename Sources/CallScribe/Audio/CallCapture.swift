@@ -88,6 +88,8 @@ final class CallCapture {
         let indices = CallTargetMatcher.select(processes.map(\.bundleID), mode: Settings.callSourceMode, ownBundleID: Paths.bundleID)
         let targets = indices.map { processes[$0] }
         let ids = targets.map(\.objectID).sorted()
+        let playing = processes.filter(\.isRunningOutput).map { "\($0.bundleID.isEmpty ? "pid \($0.pid)" : $0.bundleID)" }
+        Log.info("Call tap: processes playing audio: \(playing.isEmpty ? "none" : playing.joined(separator: ", "))")
 
         // Unchanged targets and a live tap: nothing to do. Without a tap, fall through and retry.
         if !force, tap != nil, ids == currentTargets { return }

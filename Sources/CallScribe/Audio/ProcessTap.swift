@@ -74,6 +74,7 @@ final class ProcessTap {
 
         try checkCA(AudioDeviceStart(aggregateID, ioProcID), "Start aggregate device")
         lock.withLock { lastCallback = .now }
+        Log.info("Call tap: format \(format.sampleRate) Hz, \(format.channelCount) ch, interleaved=\(format.isInterleaved); clock device \(outputUID); processes \(processIDs)")
     }
 
     func stop() {
