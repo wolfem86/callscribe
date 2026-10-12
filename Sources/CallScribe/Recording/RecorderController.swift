@@ -9,6 +9,8 @@ final class RecorderController {
     private(set) var session: RecordingSession?
     private var pausedForSleep = false
     private var observers: [NSObjectProtocol] = []
+    /// Called with each finished (non-test) recording's folder.
+    var onRecordingFinished: ((URL) -> Void)?
 
     lazy var levelsWindow = LevelsWindowController(state: state)
 
@@ -86,6 +88,7 @@ final class RecorderController {
         if !manifest.isTest {
             levelsWindow.close()
             ConsentPanel.shared.close()
+            onRecordingFinished?(session.directory)
         }
     }
 
@@ -110,6 +113,7 @@ final class RecorderController {
     }
 
     private func systemDidWake() {
+        onWake?()
         guard let session else { return }
         if pausedForSleep {
             pausedForSleep = false
@@ -118,6 +122,8 @@ final class RecorderController {
         }
         session.recoverAfterWake()
     }
+
+    var onWake: (() -> Void)?
 
     private func showAlert(_ title: String, _ message: String) {
         let alert = NSAlert()

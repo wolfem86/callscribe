@@ -59,6 +59,14 @@ private func silence(_ seconds: Double, floor: Float = 0.0003, seed: UInt64 = 7)
         #expect(result.regions.count == 1)
     }
 
+    @Test func speechRegionsOnDigitallySilentStream() {
+        let audio = [Float](repeating: 0, count: 16_000) + burst(seconds: 2, amplitude: 0.2, seed: 11)
+            + [Float](repeating: 0, count: 16_000) + burst(seconds: 1, amplitude: 0.0002, seed: 12)  // −74 dB: below the floor
+        let regions = LeakAwareVAD.speechRegions(in: audio)
+        #expect(regions.count == 1)
+        #expect(abs(regions[0].start - 1) < 0.1)
+    }
+
     @Test func mergesShortGapsAndDropsBlips() {
         let config = LeakAwareVAD.Config()
         let frames = [Bool](repeating: true, count: 20) + [Bool](repeating: false, count: 5)
@@ -119,5 +127,26 @@ private func silence(_ seconds: Double, floor: Float = 0.0003, seed: UInt64 = 7)
         try writer.close()
         let samples = try WAVRepair.readSamples(url: url)
         #expect(samples == [0, 0.5, -0.5, Float(32767) / 32768])
+    }
+}
+
+@Suite struct HallucinationFilterTests {
+    @Test func dropsStockPhrasesFromLongOrUnsureChunks() {
+        #expect(HallucinationFilter.isLikelyHallucination(text: "Thank you.", confidence: 0.8, chunkDuration: 9))
+        #expect(HallucinationFilter.isLikelyHallucination(text: "Thank you.", confidence: 0.17, chunkDuration: 2))
+        #expect(HallucinationFilter.isLikelyHallucination(text: "Thanks for watching!", confidence: 0.9, chunkDuration: 30))
+    }
+
+    @Test func keepsRealSpeech() {
+        #expect(!HallucinationFilter.isLikelyHallucination(text: "Thank you.", confidence: 0.85, chunkDuration: 1.5))
+        #expect(!HallucinationFilter.isLikelyHallucination(text: "Thank you for the update on the budget.", confidence: 0.3, chunkDuration: 20))
+    }
+
+    @Test func dropsFaintChunks() {
+        let loud = [Float](repeating: 0.05, count: 16_000)    // ≈ −26 dB
+        let faint = [Float](repeating: 0.002, count: 16_000)  // ≈ −54 dB
+        let audio = loud + faint + loud
+        let chunks = [SpeechRegion(start: 0, end: 1), SpeechRegion(start: 1, end: 2), SpeechRegion(start: 2, end: 3)]
+        #expect(HallucinationFilter.dropFaintChunks(chunks, in: audio) == [chunks[0], chunks[2]])
     }
 }

@@ -2,7 +2,7 @@
 
 A macOS menu bar app that records Microsoft Teams calls as two separate streams — your mic ("Me") and Teams' audio ("Others") — and turns them into speaker-labeled transcripts on-device.
 
-**Status: Phase 1 of 5** — dual-stream capture, level meters, Test setup, pause/resume, crash-safe writing. Transcription, OneDrive output, calendar, installer, and auto-updates come in later phases.
+**Status: Phase 3 of 5** — dual-stream capture, on-device transcription to OneDrive, and the recording details dialog. Calendar integration, the installer, and auto-updates come in later phases.
 
 Requirements: Apple Silicon, macOS 14.2+, Xcode Command Line Tools. No Xcode, no admin rights.
 
@@ -34,6 +34,21 @@ scripts/test.sh
 - **Settings** submenu: icon pulse, elapsed time in the menu bar, mic voice processing (off by default), and call audio source (Teams app, browsers, or automatic).
 - Recordings: `~/Library/Application Support/CallScribe/Recordings/<session>/` → `me.wav`, `others.wav` (16 kHz mono), and `session.json`.
 - Log: menu → View Log (`~/Library/Logs/CallScribe/callscribe.log`).
+
+## Transcription (Phase 2)
+
+- When a recording stops, CallScribe transcribes **Me** and **Others** separately, on-device, with WhisperKit (`openai_whisper-large-v3-v20240930_turbo_632MB`, downloaded once to `~/Library/Application Support/CallScribe/Models/`). The first use compiles the model for your Mac, which takes several minutes once; after that, a 2-minute call transcribes in about 10 seconds.
+- **Headset leak filtering:** wired headsets often leak call audio into their own mic. CallScribe measures that leak and ignores it on the Me stream, and if the same words still appear in both streams at the same moment, the **Me** copy is dropped (logged as "Duplicate guard").
+- **No transcribing silence:** only detected speech is sent to Whisper, region by region, so timestamps match the audio and Whisper's stock hallucinations ("Thank you.") are filtered out.
+- **Output:** `<Title> - YYYY-MM-DD HHMM.md` in OneDrive → `Call Transcripts` (auto-detected under `~/Library/CloudStorage/OneDrive-*`; change it in Settings), with the matching `.json` in `Call Transcripts/.data/`. Files are written locally first and then moved in, so OneDrive never syncs partial files. If OneDrive isn't available, transcripts wait in `~/Library/Application Support/CallScribe/Outbox/` and move automatically when it's back.
+- **Audio** is deleted once the transcript is saved (Settings → Keep Audio Locally to keep it 1–30 days). If transcription fails, the audio is kept and **Retry Transcription** appears in the menu.
+
+## Recording details (Phase 3)
+
+- When a recording stops, a **Recording Details** dialog opens while transcription runs in the background: title, date/time, organizer, participants (comma-separated), tags (suggested from tags you've used before), and notes.
+- The transcript is written only once both are done. **Save** (or closing the window) keeps what's entered; **Discard Recording…** deletes the audio and transcript after confirming. If you ignore the dialog, it saves the pre-filled values after 10 minutes.
+- **Recent Recordings** in the menu reopens the dialog for your last 20 recordings. Saving there rewrites the transcript header and renames the `.md` and `.json` if the title or date changed.
+- A small local copy of each transcript (`transcript.json` next to `session.json`) makes later edits possible after the audio is deleted.
 
 ## How capture works
 

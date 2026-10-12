@@ -5,7 +5,8 @@ import Foundation
 /// On launch, finds recordings that never finished (crash, force quit, power loss),
 /// repairs their WAV headers, and tells the user.
 enum Recovery {
-    static func checkOnLaunch() {
+    /// - Parameter transcribe: called with the recovered folders if the user chooses to transcribe them.
+    static func checkOnLaunch(transcribe: ([URL]) -> Void) {
         removeLeftoverTests()
         let unfinished = ManifestStore.unfinishedSessions(in: Paths.recordings)
         guard !unfinished.isEmpty else { return }
@@ -25,21 +26,31 @@ enum Recovery {
             // A pause still open at crash time ended when the audio did; close it at its start.
             manifest.pauses.end(at: manifest.pauses.spans.last?.start ?? 0)
             manifest.recovered = true
+            manifest.finished = true
+            manifest.endDate = manifest.endDate ?? manifest.startDate.addingTimeInterval(
+                WAVRepair.duration(url: directory.appendingPathComponent(manifest.micFile)) + manifest.pauses.totalDuration(upTo: .infinity))
+            // Pending until the user chooses to transcribe; "Later" leaves it for Retry.
+            manifest.transcription = TranscriptionStatus(state: .failed, error: "Recovered after a crash; not transcribed yet")
             try? ManifestStore.save(manifest, in: directory)
             recovered.append(directory)
         }
 
-        // Phase 2 adds "Recover and transcribe". For now the audio is repaired and kept.
         let alert = NSAlert()
         alert.messageText = recovered.count == 1
             ? "CallScribe recovered an unfinished recording"
             : "CallScribe recovered \(recovered.count) unfinished recordings"
-        alert.informativeText = "CallScribe quit while recording. The audio was repaired and kept in the Recordings folder."
+        alert.informativeText = "CallScribe quit while recording. The audio was repaired and kept."
+        alert.addButton(withTitle: "Recover and Transcribe")
         alert.addButton(withTitle: "Show in Finder")
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Later")
         NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            transcribe(recovered)
+        case .alertSecondButtonReturn:
             NSWorkspace.shared.activateFileViewerSelecting(recovered)
+        default:
+            break
         }
     }
 

@@ -19,6 +19,17 @@ public struct SessionManifest: Codable, Equatable, Sendable {
     public var callSources: [String] = []
     public var micFile = "me.wav"
     public var callFile = "others.wav"
+    /// Optional so session.json files written before transcription existed still decode.
+    public var transcription: TranscriptionStatus?
+    /// Pre-filled from the calendar (Phase 4); replaced by what the user confirms in the metadata dialog.
+    public var meeting: MeetingMetadata?
+    /// The user saved the metadata dialog (or it auto-saved). Transcripts are written only after this.
+    public var metadataConfirmed: Bool?
+    /// Teams call window title and names detected during the call, for pre-filling ad hoc calls.
+    public var windowTitle: String?
+    public var detectedParticipants: [String]?
+
+    public static let transcriptCacheFile = "transcript.json"
 
     public init(id: String, startDate: Date, isTest: Bool) {
         self.id = id
@@ -30,8 +41,40 @@ public struct SessionManifest: Codable, Equatable, Sendable {
     public var isMeOnly: Bool { !callCaptured }
 }
 
+public struct TranscriptionStatus: Codable, Equatable, Sendable {
+    public enum State: String, Codable, Sendable {
+        /// pending → transcribing → transcribed (waiting for the metadata dialog) → done (saved).
+        case pending, transcribing, transcribed, done, failed
+    }
+
+    public var state: State
+    public var error: String?
+    /// Where the .md ended up (OneDrive, or the local outbox while OneDrive is unavailable).
+    public var transcriptPath: String?
+    public var savedLocally: Bool?
+    public var updatedAt: Date
+
+    public init(state: State, error: String? = nil, transcriptPath: String? = nil, savedLocally: Bool? = nil, updatedAt: Date = Date()) {
+        self.state = state
+        self.error = error
+        self.transcriptPath = transcriptPath
+        self.savedLocally = savedLocally
+        self.updatedAt = updatedAt
+    }
+}
+
 public enum ManifestStore {
     public static let fileName = "session.json"
+
+    /// Finished, non-test sessions whose audio is still here, newest first.
+    public static func allSessions(in root: URL) -> [(URL, SessionManifest)] {
+        let dirs = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        return dirs.compactMap { dir in
+            guard let manifest = try? load(from: dir), !manifest.isTest else { return nil }
+            return (dir, manifest)
+        }
+        .sorted { $0.1.startDate > $1.1.startDate }
+    }
 
     public static func save(_ manifest: SessionManifest, in directory: URL) throws {
         let encoder = JSONEncoder()

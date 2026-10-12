@@ -14,11 +14,16 @@ final class AppState: ObservableObject {
     @Published var callOK = true
     @Published var micStatus = "Not recording"
     @Published var callStatus = "Not recording"
+    /// Transcription running in the background (shown when not recording).
+    @Published var isProcessing = false
+    @Published var failedTranscriptions = 0
 
     let levels = LevelStore()
 
     var isActive: Bool { phase == .recording || phase == .paused }
-    var hasWarning: Bool { isActive && (!micOK || !callOK) }
+    var hasWarning: Bool {
+        isActive ? (!micOK || !callOK) : failedTranscriptions > 0
+    }
 }
 
 /// Latest level per stream, written from capture threads and read by the UI at ~15 Hz.

@@ -33,6 +33,8 @@ public enum LeakAwareVAD {
 
     public struct Config: Sendable {
         public var speechAboveNoiseDB: Float = 10
+        /// Never counts anything quieter than this as speech (matters for digitally silent streams).
+        public var minimumSpeechDB: Float = -65
         /// Mic must exceed the expected leak by this much to count as your speech.
         public var marginOverLeakDB: Float = 9
         public var farEndActiveDB: Float = -45
@@ -69,7 +71,7 @@ public enum LeakAwareVAD {
         var speech = [Bool](repeating: false, count: frames)
         var leakFrames = 0
         for i in 0..<frames {
-            guard meDB[i] > noise + config.speechAboveNoiseDB else { continue }
+            guard meDB[i] > max(noise + config.speechAboveNoiseDB, config.minimumSpeechDB) else { continue }
             if let coupling, otherDB[i] > LevelMeter.floorDB + 1 {
                 let expectedLeak = otherDB[i] + coupling
                 if meDB[i] > expectedLeak + config.marginOverLeakDB {
@@ -84,6 +86,11 @@ public enum LeakAwareVAD {
 
         let regions = buildRegions(speech, frameSeconds: frameSeconds, config: config)
         return LeakAnalysis(couplingDB: coupling, noiseFloorDB: noise, regions: regions, leakSeconds: Double(leakFrames) * frameSeconds)
+    }
+
+    /// Plain level-based speech regions for a stream with no leak to account for (the Others stream).
+    public static func speechRegions(in samples: [Float], sampleRate: Double = 16_000) -> [SpeechRegion] {
+        analyze(me: samples, others: [Float](repeating: 0, count: samples.count), sampleRate: sampleRate).regions
     }
 
     static func buildRegions(_ speech: [Bool], frameSeconds: Double, config: Config) -> [SpeechRegion] {

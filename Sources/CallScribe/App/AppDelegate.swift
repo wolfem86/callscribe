@@ -8,14 +8,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var testSetup: TestSetupWindowController!
     private var statusItem: StatusItemController!
     private var controlWindow: ControlWindowController!
+    private let models = ModelManager()
+    private let output = OutputManager()
+    private var pipeline: TranscriptionPipeline!
+    private var metadataDialog: MetadataDialogController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensure()
         Log.info("CallScribe \(Paths.appVersion) launched (pid \(ProcessInfo.processInfo.processIdentifier))")
 
         recorder = RecorderController(state: state)
+        pipeline = TranscriptionPipeline(state: state, models: models, output: output)
+        metadataDialog = MetadataDialogController(pipeline: pipeline)
+        pipeline.onNeedsMetadata = { [weak self] directory in self?.metadataDialog.show(directory) }
+        // Transcription and the details dialog run side by side; the transcript is written when both are done.
+        recorder.onRecordingFinished = { [weak self] directory in
+            self?.pipeline.enqueue(directory)
+            self?.metadataDialog.show(directory)
+        }
+        recorder.onWake = { [weak self] in self?.pipeline.housekeeping() }
         testSetup = TestSetupWindowController(recorder: recorder)
-        statusItem = StatusItemController(state: state, recorder: recorder, testSetup: testSetup)
+        statusItem = StatusItemController(state: state, recorder: recorder, testSetup: testSetup,
+                                          models: models, pipeline: pipeline, output: output)
+        statusItem.onOpenRecording = { [weak self] directory in self?.metadataDialog.show(directory) }
         controlWindow = ControlWindowController(state: state, recorder: recorder, testSetup: testSetup)
 
         // ⌃⌥R start/stop, ⌃⌥P pause/resume. Ignored while Test setup runs.
@@ -34,7 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        DispatchQueue.main.async { Recovery.checkOnLaunch() }
+        Notifier.requestAuthorization()
+        models.ensureModel()  // First launch: downloads the Whisper model in the background.
+        DispatchQueue.main.async { [self] in
+            Recovery.checkOnLaunch { directories in directories.forEach(self.pipeline.enqueue) }
+            pipeline.start()
+        }
     }
 
     /// Opening CallScribe again (Finder, Spotlight, `open`) shows the controls in a window,
