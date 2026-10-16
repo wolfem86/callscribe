@@ -23,6 +23,8 @@ struct ControlView: View {
                     .disabled(state.isTesting)
                 Button(state.phase == .paused ? "Resume" : "Pause") { recorder.togglePause() }
                     .disabled(!state.isActive || state.isTesting)
+                Button("Levels") { recorder.levelsWindow.toggle() }
+                    .disabled(!state.isActive || state.isTesting)
             }
             Divider()
             HStack {

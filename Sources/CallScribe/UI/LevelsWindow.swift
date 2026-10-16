@@ -87,6 +87,12 @@ final class LevelsWindowController {
         window?.orderFrontRegardless()
     }
 
+    var isVisible: Bool { window?.isVisible == true }
+
+    func toggle() {
+        if isVisible { close() } else { show() }
+    }
+
     func close() {
         window?.close()
     }

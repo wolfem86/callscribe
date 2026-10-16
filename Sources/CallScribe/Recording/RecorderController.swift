@@ -66,8 +66,7 @@ final class RecorderController {
             }
         }
         if !isTest {
-            ConsentPanel.shared.show()
-            levelsWindow.show()
+            if Settings.showLevelsOnStart { levelsWindow.show() }
         }
         return session
     }
@@ -87,7 +86,6 @@ final class RecorderController {
         state.levels.reset()
         if !manifest.isTest {
             levelsWindow.close()
-            ConsentPanel.shared.close()
             onRecordingFinished?(session.directory)
         }
     }

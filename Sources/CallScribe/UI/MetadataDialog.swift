@@ -12,8 +12,11 @@ final class MetadataDialogModel: ObservableObject {
     let tagHistory: [String: Int]
 
     @Published var title: String
-    @Published var start: Date
-    @Published var organizer: String
+    /// Pre-filled from the actual recording. Moving the start moves the end by the same amount.
+    @Published var start: Date {
+        didSet { end = end.addingTimeInterval(start.timeIntervalSince(oldValue)) }
+    }
+    @Published var end: Date
     @Published var participants: String
     @Published var tags: String
     @Published var notes: String
@@ -32,7 +35,7 @@ final class MetadataDialogModel: ObservableObject {
         self.editsInvited = !meeting.invited.isEmpty
         title = meeting.title == FileNaming.defaultTitle && !isEdit ? "" : meeting.title
         start = meeting.recordedStart
-        organizer = meeting.organizer?.display ?? ""
+        end = meeting.recordedEnd
         participants = editsInvited ? PeopleField.format(meeting.invited) : meeting.participants.joined(separator: ", ")
         tags = meeting.tags.isEmpty ? "" : meeting.tags.joined(separator: ", ")
         notes = meeting.notes ?? ""
@@ -56,11 +59,12 @@ final class MetadataDialogModel: ObservableObject {
 
     /// The values to save. An empty title falls back to the pre-filled default.
     func meeting() -> MeetingMetadata {
-        var meeting = MetadataPrefill.moving(original, toStart: start)
+        // Organizer isn't edited here; one from the calendar is kept as is.
+        var meeting = original
+        meeting.recordedStart = start
+        meeting.recordedEnd = max(end, start)
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         meeting.title = trimmedTitle.isEmpty ? MetadataPrefill.title(calendarTitle: nil, windowTitle: nil) : trimmedTitle
-        let organizerText = organizer.trimmingCharacters(in: .whitespaces)
-        meeting.organizer = organizerText.isEmpty ? nil : PeopleField.parse(organizerText, keeping: [original.organizer].compactMap { $0 }).first
         if editsInvited {
             meeting.invited = PeopleField.parse(participants, keeping: original.invited)
         } else {
@@ -83,9 +87,13 @@ struct MetadataDialogView: View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
                 TextField("Title", text: $model.title, prompt: Text(model.titlePlaceholder))
-                DatePicker("Date", selection: $model.start, displayedComponents: [.date, .hourAndMinute])
-                TextField("Organizer", text: $model.organizer, prompt: Text("Name (email)"))
                 TextField("Participants", text: $model.participants, prompt: Text("Comma-separated"))
+                LabeledContent("Notes") {
+                    TextEditor(text: $model.notes)
+                        .font(.body)
+                        .frame(minHeight: 70)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("Tags", text: $model.tags, prompt: Text("Comma-separated"))
                     if !model.tagSuggestions.isEmpty {
@@ -98,12 +106,8 @@ struct MetadataDialogView: View {
                         }
                     }
                 }
-                LabeledContent("Notes") {
-                    TextEditor(text: $model.notes)
-                        .font(.body)
-                        .frame(minHeight: 70)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
-                }
+                DatePicker("Start", selection: $model.start, displayedComponents: [.date, .hourAndMinute])
+                DatePicker("End", selection: $model.end, in: model.start..., displayedComponents: [.date, .hourAndMinute])
             }
             .formStyle(.columns)
 

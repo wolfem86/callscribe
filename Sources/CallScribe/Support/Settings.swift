@@ -16,6 +16,13 @@ enum Settings {
         set { defaults.set(newValue, forKey: "pulseEnabled") }
     }
 
+    /// Open the levels window automatically when a recording starts. Off by default; it can always
+    /// be shown or hidden from the menu during a recording.
+    static var showLevelsOnStart: Bool {
+        get { defaults.bool(forKey: "showLevelsOnStart") }
+        set { defaults.set(newValue, forKey: "showLevelsOnStart") }
+    }
+
     /// Elapsed recording time next to the menu bar icon.
     static var showElapsed: Bool {
         get { defaults.bool(forKey: "showElapsed") }
@@ -66,13 +73,5 @@ enum Settings {
     static var keepAudioDays: Int {
         get { defaults.integer(forKey: "keepAudioDays") }
         set { defaults.set(newValue, forKey: "keepAudioDays") }
-    }
-
-    static var consentMessage: String {
-        get {
-            defaults.string(forKey: "consentMessage")
-                ?? "Heads up: I'm recording this call to create a transcript for my notes. The audio stays on my Mac. Let me know if you'd rather I didn't."
-        }
-        set { defaults.set(newValue, forKey: "consentMessage") }
     }
 }

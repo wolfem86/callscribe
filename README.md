@@ -29,9 +29,9 @@ scripts/test.sh
 ## Using Phase 1
 
 - **Start/stop:** menu bar → Start Recording, or **⌃⌥R**. **Pause/resume:** **⌃⌥P**.
-- **Levels window** opens while recording, with a meter and status for each stream. Closing it doesn't stop the recording.
+- **Levels window:** a meter and status for each stream. During a recording, show or hide it from the menu (**Show/Hide Levels Window**); Settings → **Open Levels Window When Recording** opens it automatically (off by default). Closing it doesn't stop the recording.
 - **Test Setup…** runs a 15-second check: speak, then play audio in Teams or a browser. It reports whether each stream heard the right thing and whether either one picked up the other.
-- **Settings** submenu: icon pulse, elapsed time in the menu bar, mic voice processing (off by default), and call audio source (Teams app, browsers, or automatic).
+- **Settings** submenu: icon pulse, elapsed time in the menu bar, levels window on start, mic voice processing (off by default), call audio source (Teams app, browsers, or automatic), transcripts folder, and how long to keep audio.
 - Recordings: `~/Library/Application Support/CallScribe/Recordings/<session>/` → `me.wav`, `others.wav` (16 kHz mono), and `session.json`.
 - Log: menu → View Log (`~/Library/Logs/CallScribe/callscribe.log`).
 
@@ -45,9 +45,9 @@ scripts/test.sh
 
 ## Recording details (Phase 3)
 
-- When a recording stops, a **Recording Details** dialog opens while transcription runs in the background: title, date/time, organizer, participants (comma-separated), tags (suggested from tags you've used before), and notes.
+- When a recording stops, a **Recording Details** dialog opens while transcription runs in the background, in this order: title, participants (comma-separated), notes, tags (suggested from tags you've used before), then start and end date/time — both pre-filled from the actual recording (moving the start moves the end with it).
 - The transcript is written only once both are done. **Save** (or closing the window) keeps what's entered; **Discard Recording…** deletes the audio and transcript after confirming. If you ignore the dialog, it saves the pre-filled values after 10 minutes.
-- **Recent Recordings** in the menu reopens the dialog for your last 20 recordings. Saving there rewrites the transcript header and renames the `.md` and `.json` if the title or date changed.
+- **Recent Recordings** in the menu reopens the dialog for your last 20 recordings. Saving there rewrites the transcript header and renames the `.md` and `.json` if the title or start time changed.
 - A small local copy of each transcript (`transcript.json` next to `session.json`) makes later edits possible after the audio is deleted.
 
 ## How capture works

@@ -111,7 +111,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(.separator())
             addInfo(menu, (state.micOK ? "Me: " : "⚠︎ Me: ") + state.micStatus)
             addInfo(menu, (state.callOK ? "Others: " : "⚠︎ Others: ") + state.callStatus)
-            add(menu, "Show Levels", #selector(showLevels))
+            add(menu, recorder.levelsWindow.isVisible ? "Hide Levels Window" : "Show Levels Window", #selector(toggleLevels))
         }
 
         menu.addItem(.separator())
@@ -163,6 +163,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         toggle(menu, "Pulse Icon While Recording", Settings.pulseEnabled, #selector(togglePulse))
         toggle(menu, "Show Elapsed Time", Settings.showElapsed, #selector(toggleElapsed))
+        toggle(menu, "Open Levels Window When Recording", Settings.showLevelsOnStart, #selector(toggleLevelsOnStart))
         toggle(menu, "Mic Voice Processing", Settings.voiceProcessing, #selector(toggleVoiceProcessing))
 
         let folderName = Settings.transcriptsFolder?.lastPathComponent ?? "not set"
@@ -215,7 +216,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func toggleRecording() { recorder.toggleRecording() }
     @objc private func togglePause() { recorder.togglePause() }
-    @objc private func showLevels() { recorder.levelsWindow.show() }
+    @objc private func toggleLevels() { recorder.levelsWindow.toggle() }
+    @objc private func toggleLevelsOnStart() { Settings.showLevelsOnStart.toggle() }
     @objc private func showTestSetup() { testSetup.show() }
     @objc private func openRecordings() { NSWorkspace.shared.open(Paths.recordings) }
     @objc private func viewLog() { NSWorkspace.shared.open(Log.fileURL) }
