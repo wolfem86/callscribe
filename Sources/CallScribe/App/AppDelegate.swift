@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CallScribeCore
 import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -12,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let output = OutputManager()
     private var pipeline: TranscriptionPipeline!
     private var metadataDialog: MetadataDialogController!
+    private let calendar = CalendarFile()
+    private lazy var detector = MeetingDetector(calendar: calendar)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensure()
@@ -22,16 +25,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         metadataDialog = MetadataDialogController(pipeline: pipeline)
         pipeline.onNeedsMetadata = { [weak self] directory in self?.metadataDialog.show(directory) }
         // Transcription and the details dialog run side by side; the transcript is written when both are done.
+        recorder.onDidStart = { [weak self] session in self?.detector.recordingStarted(session) }
+        recorder.onWillStop = { [weak self] session in
+            self?.detector.recordingWillStop(session)
+            self?.metadataDialog.finishLive(session)
+        }
         recorder.onRecordingFinished = { [weak self] directory in
             self?.pipeline.enqueue(directory)
-            self?.metadataDialog.show(directory)
+            // Details already entered during the call: don't ask again.
+            if (try? ManifestStore.load(from: directory))?.metadataConfirmed != true {
+                self?.metadataDialog.show(directory)
+            }
         }
         recorder.onWake = { [weak self] in self?.pipeline.housekeeping() }
         testSetup = TestSetupWindowController(recorder: recorder)
         statusItem = StatusItemController(state: state, recorder: recorder, testSetup: testSetup,
-                                          models: models, pipeline: pipeline, output: output)
+                                          models: models, pipeline: pipeline, output: output, calendar: calendar)
         statusItem.onOpenRecording = { [weak self] directory in self?.metadataDialog.show(directory) }
+        statusItem.onEditLiveDetails = { [weak self] in self?.editLiveDetails() }
         controlWindow = ControlWindowController(state: state, recorder: recorder, testSetup: testSetup)
+        controlWindow.onEditLiveDetails = { [weak self] in self?.editLiveDetails() }
 
         // ⌃⌥R start/stop, ⌃⌥P pause/resume. Ignored while Test setup runs.
         HotKeyCenter.shared.register(id: 1, keyCode: kVK_ANSI_R, modifiers: controlKey | optionKey) { [weak self] in
@@ -42,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, !self.state.isTesting else { return }
             self.recorder.togglePause()
         }
+        // ⌃⌥D: edit the call details while recording.
+        HotKeyCenter.shared.register(id: 3, keyCode: kVK_ANSI_D, modifiers: controlKey | optionKey) { [weak self] in
+            self?.editLiveDetails()
+        }
 
         if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
             AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -50,11 +67,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Notifier.requestAuthorization()
+        calendar.start()
         models.ensureModel()  // First launch: downloads the Whisper model in the background.
         DispatchQueue.main.async { [self] in
             Recovery.checkOnLaunch { directories in directories.forEach(self.pipeline.enqueue) }
             pipeline.start()
         }
+    }
+
+    private func editLiveDetails() {
+        guard let session = recorder.session, !state.isTesting else { return }
+        metadataDialog.showLive(session)
     }
 
     /// Opening CallScribe again (Finder, Spotlight, `open`) shows the controls in a window,

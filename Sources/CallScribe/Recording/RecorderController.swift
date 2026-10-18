@@ -11,6 +11,10 @@ final class RecorderController {
     private var observers: [NSObjectProtocol] = []
     /// Called with each finished (non-test) recording's folder.
     var onRecordingFinished: ((URL) -> Void)?
+    /// Called just before a recording stops, so details being edited can be kept.
+    var onWillStop: ((RecordingSession) -> Void)?
+    /// Called right after a (non-test) recording starts.
+    var onDidStart: ((RecordingSession) -> Void)?
 
     lazy var levelsWindow = LevelsWindowController(state: state)
 
@@ -66,6 +70,7 @@ final class RecorderController {
             }
         }
         if !isTest {
+            onDidStart?(session)
             if Settings.showLevelsOnStart { levelsWindow.show() }
         }
         return session
@@ -75,6 +80,7 @@ final class RecorderController {
         guard let session else { return }
         self.session = nil
         pausedForSleep = false
+        onWillStop?(session)
         let manifest = session.stop()
         state.phase = .idle
         state.isTesting = false

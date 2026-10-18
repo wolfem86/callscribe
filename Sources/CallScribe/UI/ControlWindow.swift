@@ -7,6 +7,7 @@ struct ControlView: View {
     @ObservedObject var state: AppState
     let recorder: RecorderController
     let testSetup: TestSetupWindowController
+    let editDetails: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -25,6 +26,8 @@ struct ControlView: View {
                     .disabled(!state.isActive || state.isTesting)
                 Button("Levels") { recorder.levelsWindow.toggle() }
                     .disabled(!state.isActive || state.isTesting)
+                Button("Details…", action: editDetails)
+                    .disabled(!state.isActive || state.isTesting)
             }
             Divider()
             HStack {
@@ -34,7 +37,7 @@ struct ControlView: View {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
             }
-            Text("Shortcuts: ⌃⌥R start/stop · ⌃⌥P pause/resume")
+            Text("Shortcuts: ⌃⌥R start/stop · ⌃⌥P pause/resume · ⌃⌥D call details")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -57,6 +60,7 @@ final class ControlWindowController {
     private let recorder: RecorderController
     private let testSetup: TestSetupWindowController
     private var window: NSWindow?
+    var onEditLiveDetails: (() -> Void)?
 
     init(state: AppState, recorder: RecorderController, testSetup: TestSetupWindowController) {
         self.state = state
@@ -70,7 +74,8 @@ final class ControlWindowController {
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "CallScribe"
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: ControlView(state: state, recorder: recorder, testSetup: testSetup))
+            window.contentView = NSHostingView(rootView: ControlView(state: state, recorder: recorder, testSetup: testSetup,
+                                                                       editDetails: { [weak self] in self?.onEditLiveDetails?() }))
             window.center()
             self.window = window
         }

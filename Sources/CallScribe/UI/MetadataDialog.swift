@@ -9,7 +9,10 @@ final class MetadataDialogModel: ObservableObject {
     let directory: URL
     /// Editing a transcript that's already saved (from Recent recordings).
     let isEdit: Bool
+    /// Editing while the recording is still running.
+    let isLive: Bool
     let tagHistory: [String: Int]
+    var participantHistory: [String: Int] = [:]
 
     @Published var title: String
     /// Pre-filled from the actual recording. Moving the start moves the end by the same amount.
@@ -27,9 +30,11 @@ final class MetadataDialogModel: ObservableObject {
     /// Calendar meetings edit the invited list; ad hoc calls edit detected participants.
     private let editsInvited: Bool
 
-    init(directory: URL, meeting: MeetingMetadata, isEdit: Bool, tagHistory: [String: Int], status: TranscriptionStatus.State?) {
+    init(directory: URL, meeting: MeetingMetadata, isEdit: Bool, isLive: Bool = false,
+         tagHistory: [String: Int], status: TranscriptionStatus.State?) {
         self.directory = directory
         self.isEdit = isEdit
+        self.isLive = isLive
         self.tagHistory = tagHistory
         self.original = meeting
         self.editsInvited = !meeting.invited.isEmpty
@@ -40,14 +45,20 @@ final class MetadataDialogModel: ObservableObject {
         tags = meeting.tags.isEmpty ? "" : meeting.tags.joined(separator: ", ")
         notes = meeting.notes ?? ""
         self.status = status
-        secondsLeft = isEdit ? nil : Self.autoSaveSeconds
+        secondsLeft = isEdit || isLive ? nil : Self.autoSaveSeconds
     }
 
     var titlePlaceholder: String { FileNaming.defaultTitle }
 
     var tagSuggestions: [String] { TagField.suggestions(for: tags, from: tagHistory) }
+    /// Suggested only once something is typed, so the dialog stays quiet for calendar meetings.
+    var participantSuggestions: [String] {
+        let typed = participants.split(separator: ",", omittingEmptySubsequences: false).last?.trimmingCharacters(in: .whitespaces) ?? ""
+        return typed.isEmpty ? [] : TagField.suggestions(for: participants, from: participantHistory, limit: 4)
+    }
 
     var statusText: String {
+        if isLive { return "Recording in progress. These details are used when it stops, so you won't be asked again." }
         switch status {
         case .pending?, .transcribing?: return "Transcribing in the background…"
         case .transcribed?: return "Transcript ready. Save to write it."
@@ -87,7 +98,18 @@ struct MetadataDialogView: View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
                 TextField("Title", text: $model.title, prompt: Text(model.titlePlaceholder))
-                TextField("Participants", text: $model.participants, prompt: Text("Comma-separated"))
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("Participants", text: $model.participants, prompt: Text("Comma-separated"))
+                    if !model.participantSuggestions.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(model.participantSuggestions, id: \.self) { name in
+                                Button(name) { model.participants = TagField.complete(model.participants, with: name) }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                }
                 LabeledContent("Notes") {
                     TextEditor(text: $model.notes)
                         .font(.body)
@@ -107,7 +129,11 @@ struct MetadataDialogView: View {
                     }
                 }
                 DatePicker("Start", selection: $model.start, displayedComponents: [.date, .hourAndMinute])
-                DatePicker("End", selection: $model.end, in: model.start..., displayedComponents: [.date, .hourAndMinute])
+                if model.isLive {
+                    LabeledContent("End") { Text("Set when the recording stops").foregroundStyle(.secondary) }
+                } else {
+                    DatePicker("End", selection: $model.end, in: model.start..., displayedComponents: [.date, .hourAndMinute])
+                }
             }
             .formStyle(.columns)
 
@@ -116,7 +142,7 @@ struct MetadataDialogView: View {
                 .foregroundStyle(.secondary)
 
             HStack {
-                if model.isEdit {
+                if model.isEdit || model.isLive {
                     Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
                 } else {
                     Button("Discard Recording…", role: .destructive, action: discard)
@@ -138,6 +164,8 @@ struct MetadataDialogView: View {
 /// One dialog window per recording.
 final class MetadataDialogController: NSObject, NSWindowDelegate {
     private let pipeline: TranscriptionPipeline
+    /// The recording whose details are being edited live, if any.
+    private weak var liveSession: RecordingSession?
     private var windows: [URL: (NSWindow, MetadataDialogModel, Timer?)] = [:]
     private var observer: NSObjectProtocol?
 
@@ -162,9 +190,11 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
         let meeting = isEdit
             ? (manifest.meeting ?? pipeline.loadDocument(directory, manifest: manifest)?.meeting ?? TranscriptionPipeline.initialMeeting(manifest))
             : TranscriptionPipeline.initialMeeting(manifest)
-        let history = TagField.history(from: ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting))
+        let pastMeetings = ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting)
+        let history = TagField.history(from: pastMeetings)
         let model = MetadataDialogModel(directory: directory, meeting: meeting, isEdit: isEdit,
                                         tagHistory: history, status: manifest.transcription?.state)
+        model.participantHistory = Self.participantHistory(pastMeetings)
 
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -197,11 +227,65 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Opens the details for the recording in progress.
+    func showLive(_ session: RecordingSession) {
+        let directory = session.directory
+        if let (window, _, _) = windows[directory] {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        liveSession = session
+        let manifest = session.manifestSnapshot
+        let pastMeetings = ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting)
+        let history = TagField.history(from: pastMeetings)
+        let model = MetadataDialogModel(directory: directory, meeting: manifest.meeting ?? TranscriptionPipeline.initialMeeting(manifest),
+                                        isEdit: false, isLive: true, tagHistory: history, status: nil)
+        model.participantHistory = Self.participantHistory(pastMeetings)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "Call Details (Recording)"
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentView = NSHostingView(rootView: MetadataDialogView(
+            model: model,
+            save: { [weak self] in self?.save(directory) },
+            discard: {},
+            cancel: { [weak self] in self?.close(directory) }
+        ))
+        window.center()
+        windows[directory] = (window, model, nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// The recording is stopping: keep whatever is in its live details window.
+    func finishLive(_ session: RecordingSession) {
+        if let (_, model, _) = windows[session.directory], model.isLive {
+            save(session.directory)
+        }
+    }
+
+    /// Names from past recordings' participants and invitees, by how often they appear.
+    static func participantHistory(_ meetings: [MeetingMetadata]) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for meeting in meetings {
+            for name in meeting.participants + meeting.invited.map({ $0.name.isEmpty ? ($0.email ?? "") : $0.name }) where !name.isEmpty {
+                counts[name, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
     private func save(_ directory: URL) {
         guard let (_, model, _) = windows[directory] else { return }
         let meeting = model.meeting()
         close(directory)
-        pipeline.confirmMetadata(directory, meeting: meeting)
+        if model.isLive {
+            liveSession?.updateMeeting(meeting)
+        } else {
+            pipeline.confirmMetadata(directory, meeting: meeting)
+        }
     }
 
     private func confirmDiscard(_ directory: URL) {
@@ -232,6 +316,7 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let directory = windows.first(where: { $0.value.0 === window })?.key,
               let (_, model, _) = windows[directory] else { return }
+        // Closing keeps what's entered, except when editing an already-saved transcript.
         if model.isEdit {
             close(directory)
         } else {

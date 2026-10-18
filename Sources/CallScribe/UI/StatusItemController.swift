@@ -11,13 +11,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let models: ModelManager
     private let pipeline: TranscriptionPipeline
     private let output: OutputManager
+    private let calendar: CalendarFile
     private var cancellables = Set<AnyCancellable>()
     private var animationTimer: Timer?
     /// Opens the details dialog for a past recording.
     var onOpenRecording: ((URL) -> Void)?
+    /// Opens the details for the recording in progress.
+    var onEditLiveDetails: (() -> Void)?
 
     init(state: AppState, recorder: RecorderController, testSetup: TestSetupWindowController,
-         models: ModelManager, pipeline: TranscriptionPipeline, output: OutputManager) {
+         models: ModelManager, pipeline: TranscriptionPipeline, output: OutputManager, calendar: CalendarFile) {
+        self.calendar = calendar
         self.state = state
         self.recorder = recorder
         self.testSetup = testSetup
@@ -111,6 +115,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menu.addItem(.separator())
             addInfo(menu, (state.micOK ? "Me: " : "⚠︎ Me: ") + state.micStatus)
             addInfo(menu, (state.callOK ? "Others: " : "⚠︎ Others: ") + state.callStatus)
+            let details = add(menu, "Edit Call Details…", #selector(editLiveDetails), key: "d")
+            details.keyEquivalentModifierMask = [.control, .option]
             add(menu, recorder.levelsWindow.isVisible ? "Hide Levels Window" : "Show Levels Window", #selector(toggleLevels))
         }
 
@@ -146,6 +152,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         recentItem.submenu = recentMenu
         menu.addItem(recentItem)
         add(menu, "Open Transcripts Folder", #selector(openTranscripts))
+        addInfo(menu, calendar.statusText)
+        if !TeamsWindowWatcher.isTrusted {
+            add(menu, "Allow Accessibility (Teams meeting names)…", #selector(openAccessibility))
+        }
 
         menu.addItem(.separator())
         add(menu, "Test Setup…", #selector(showTestSetup)).isEnabled = !state.isActive
@@ -166,6 +176,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         toggle(menu, "Open Levels Window When Recording", Settings.showLevelsOnStart, #selector(toggleLevelsOnStart))
         toggle(menu, "Mic Voice Processing", Settings.voiceProcessing, #selector(toggleVoiceProcessing))
 
+        add(menu, "Calendar File (\(calendar.url?.lastPathComponent ?? "not set"))…", #selector(chooseCalendarFile))
         let folderName = Settings.transcriptsFolder?.lastPathComponent ?? "not set"
         add(menu, "Transcripts Folder (\(folderName))…", #selector(chooseTranscriptsFolder))
 
@@ -224,6 +235,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func downloadModel() { models.ensureModel() }
+    @objc private func chooseCalendarFile() { calendar.chooseFile() }
+    @objc private func openAccessibility() { TeamsWindowWatcher.openSettings() }
     @objc private func chooseTranscriptsFolder() { output.chooseFolder() }
 
     @objc private func openTranscripts() {
@@ -233,6 +246,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSWorkspace.shared.open(OutputManager.outboxRoot)
         }
     }
+
+    @objc private func editLiveDetails() { onEditLiveDetails?() }
 
     @objc private func openRecording(_ sender: NSMenuItem) {
         guard let directory = sender.representedObject as? URL else { return }

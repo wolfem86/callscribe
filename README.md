@@ -2,7 +2,7 @@
 
 A macOS menu bar app that records Microsoft Teams calls as two separate streams — your mic ("Me") and Teams' audio ("Others") — and turns them into speaker-labeled transcripts on-device.
 
-**Status: Phase 3 of 5** — dual-stream capture, on-device transcription to OneDrive, and the recording details dialog. Calendar integration, the installer, and auto-updates come in later phases.
+**Status: Phase 4 in progress** — dual-stream capture, on-device transcription to OneDrive, the recording details dialog, and meeting details from Outlook via Power Automate. Reminders, auto-detection, the installer, and auto-updates come next.
 
 Requirements: Apple Silicon, macOS 14.2+, Xcode Command Line Tools. No Xcode, no admin rights.
 
@@ -28,7 +28,7 @@ scripts/test.sh
 
 ## Using Phase 1
 
-- **Start/stop:** menu bar → Start Recording, or **⌃⌥R**. **Pause/resume:** **⌃⌥P**.
+- **Start/stop:** menu bar → Start Recording, or **⌃⌥R**. **Pause/resume:** **⌃⌥P**. **Call details while recording:** **⌃⌥D**.
 - **Levels window:** a meter and status for each stream. During a recording, show or hide it from the menu (**Show/Hide Levels Window**); Settings → **Open Levels Window When Recording** opens it automatically (off by default). Closing it doesn't stop the recording.
 - **Test Setup…** runs a 15-second check: speak, then play audio in Teams or a browser. It reports whether each stream heard the right thing and whether either one picked up the other.
 - **Settings** submenu: icon pulse, elapsed time in the menu bar, levels window on start, mic voice processing (off by default), call audio source (Teams app, browsers, or automatic), transcripts folder, and how long to keep audio.
@@ -47,8 +47,36 @@ scripts/test.sh
 
 - When a recording stops, a **Recording Details** dialog opens while transcription runs in the background, in this order: title, participants (comma-separated), notes, tags (suggested from tags you've used before), then start and end date/time — both pre-filled from the actual recording (moving the start moves the end with it).
 - The transcript is written only once both are done. **Save** (or closing the window) keeps what's entered; **Discard Recording…** deletes the audio and transcript after confirming. If you ignore the dialog, it saves the pre-filled values after 10 minutes.
+- **During a call**, choose **Edit Call Details…** in the menu (or **⌃⌥D**, or **Details…** in the control window) to fill in the same fields while recording. End is filled in when the recording stops, and you won't be asked again afterwards.
 - **Recent Recordings** in the menu reopens the dialog for your last 20 recordings. Saving there rewrites the transcript header and renames the `.md` and `.json` if the title or start time changed.
 - A small local copy of each transcript (`transcript.json` next to `session.json`) makes later edits possible after the audio is deleted.
+
+## Meeting details from Outlook (Power Automate)
+
+CallScribe pre-fills each recording's details (title, scheduled time, organizer, invitees, Teams link, and agenda without the Teams join boilerplate) from a calendar file that a **Power Automate** flow keeps up to date in your OneDrive. This needs no IT approval or app registration: the flow runs as you, with access to your own calendar. If no event matches, the **Teams call window's title** (meeting name, or "Call with Jane Smith") is used instead, which needs the Accessibility permission.
+
+### Set up the flow (about 5 minutes, once)
+
+1. Go to **make.powerautomate.com** and sign in with your work account.
+2. **Create → Scheduled cloud flow.** Name it `CallScribe calendar`, set it to repeat every **15 minutes**, and click **Create**.
+3. Add the action **Get calendar view of events (V3)** (Office 365 Outlook):
+   - **Calendar Id:** Calendar
+   - **Start Time:** expression `addHours(utcNow(), -12)`
+   - **End Time:** expression `addDays(utcNow(), 7)`
+4. Add the action **Create file** (OneDrive for Business):
+   - **Folder Path:** `/CallScribe`
+   - **File Name:** `calendar.json`
+   - **File Content:** dynamic content **Body** from *Get calendar view of events (V3)*
+5. **Save**, then **Test → Manually → Run**. Check that OneDrive now has `CallScribe/calendar.json`.
+6. On your Mac, in Finder, right-click `OneDrive → CallScribe → calendar.json` → **Always Keep on This Device**.
+
+If the second scheduled run fails with "a file with the same name already exists", replace the **Create file** step with **Update file** (OneDrive for Business), with **File** set to `/CallScribe/calendar.json` and the same **File Content**.
+
+The CallScribe menu shows the calendar status, e.g. "Calendar: 12 upcoming events · updated 4 min ago". If your file is somewhere else, use Settings → **Calendar File…**. The file stays in your own OneDrive; CallScribe only reads it.
+
+### How events are matched
+
+A recording is matched to the event that's in progress when it starts, or that starts within 15 minutes of it, preferring Teams meetings and then the closest start time. It's checked again when the recording stops. Matched details pre-fill the dialog (and **⌃⌥D** during the call); everything stays editable. Past participants are also suggested as you type names.
 
 ## How capture works
 

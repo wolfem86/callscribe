@@ -69,6 +69,37 @@ final class RecordingSession {
         Log.info("Session \(id): started\(isTest ? " (test)" : "")")
     }
 
+    var manifestSnapshot: SessionManifest { lock.withLock { manifest } }
+
+    /// Details entered during the call. They count as confirmed, so no dialog is shown after it ends;
+    /// the end time is filled in by stop().
+    func updateMeeting(_ meeting: MeetingMetadata) {
+        lock.withLock {
+            manifest.meeting = meeting
+            manifest.metadataConfirmed = true
+        }
+        saveManifest()
+        Log.info("Session \(id): call details updated during recording")
+    }
+
+    /// Calendar pre-fill; ignored once the user has entered details.
+    func setPrefill(_ meeting: MeetingMetadata) {
+        let applied = lock.withLock { () -> Bool in
+            guard manifest.metadataConfirmed != true, manifest.meeting == nil else { return false }
+            manifest.meeting = meeting
+            return true
+        }
+        if applied { saveManifest() }
+    }
+
+    func setWindowDetection(title: String, participants: [String]) {
+        lock.withLock {
+            manifest.windowTitle = title
+            if !participants.isEmpty { manifest.detectedParticipants = participants }
+        }
+        saveManifest()
+    }
+
     func pause(reason: String) {
         let wall = wallElapsed
         lock.withLock { manifest.pauses.begin(at: wall) }
@@ -102,9 +133,15 @@ final class RecordingSession {
         micSink.close()
         callSink.close()
         let final = lock.withLock {
-            manifest.endDate = Date()
+            let end = Date()
+            manifest.endDate = end
             manifest.wallDuration = wall
             manifest.finished = true
+            if var meeting = manifest.meeting {
+                // Keep any adjustment the user made to the start time.
+                meeting.recordedEnd = end.addingTimeInterval(meeting.recordedStart.timeIntervalSince(manifest.startDate))
+                manifest.meeting = meeting
+            }
             return manifest
         }
         saveManifest()
