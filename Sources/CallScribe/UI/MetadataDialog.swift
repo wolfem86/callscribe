@@ -24,6 +24,8 @@ final class MetadataDialogModel: ObservableObject {
     @Published var tags: String
     @Published var notes: String
     @Published var status: TranscriptionStatus.State?
+    @Published var participantHighlight = 0
+    @Published var tagHighlight = 0
     @Published var secondsLeft: Int?
 
     private let original: MeetingMetadata
@@ -98,15 +100,13 @@ struct MetadataDialogView: View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
                 TextField("Title", text: $model.title, prompt: Text(model.titlePlaceholder))
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField("Participants", text: $model.participants, prompt: Text("Comma-separated"))
-                    if !model.participantSuggestions.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(model.participantSuggestions, id: \.self) { name in
-                                Button(name) { model.participants = TagField.complete(model.participants, with: name) }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            }
+                LabeledContent("Participants") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        SuggestingTextField(text: $model.participants, placeholder: "Comma-separated",
+                                            suggestions: model.participantSuggestions, highlighted: $model.participantHighlight,
+                                            accept: { TagField.complete(model.participants, with: $0) })
+                        SuggestionChips(suggestions: model.participantSuggestions, highlighted: model.participantHighlight) {
+                            model.participants = TagField.complete(model.participants, with: $0)
                         }
                     }
                 }
@@ -116,15 +116,13 @@ struct MetadataDialogView: View {
                         .frame(minHeight: 70)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField("Tags", text: $model.tags, prompt: Text("Comma-separated"))
-                    if !model.tagSuggestions.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(model.tagSuggestions, id: \.self) { tag in
-                                Button(tag) { model.tags = TagField.complete(model.tags, with: tag) }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            }
+                LabeledContent("Tags") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        SuggestingTextField(text: $model.tags, placeholder: "Comma-separated",
+                                            suggestions: model.tagSuggestions, highlighted: $model.tagHighlight,
+                                            accept: { TagField.complete(model.tags, with: $0) })
+                        SuggestionChips(suggestions: model.tagSuggestions, highlighted: model.tagHighlight) {
+                            model.tags = TagField.complete(model.tags, with: $0)
                         }
                     }
                 }
