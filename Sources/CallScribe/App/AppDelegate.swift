@@ -14,7 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pipeline: TranscriptionPipeline!
     private var metadataDialog: MetadataDialogController!
     private let calendar = CalendarFile()
-    private lazy var detector = MeetingDetector(calendar: calendar)
+    private let contacts = ContactStore()
+    private lazy var detector = MeetingDetector(calendar: calendar, contacts: contacts)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensure()
@@ -22,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         recorder = RecorderController(state: state)
         pipeline = TranscriptionPipeline(state: state, models: models, output: output)
-        metadataDialog = MetadataDialogController(pipeline: pipeline)
+        metadataDialog = MetadataDialogController(pipeline: pipeline, contacts: contacts)
         pipeline.onNeedsMetadata = { [weak self] directory in self?.metadataDialog.show(directory) }
         // Transcription and the details dialog run side by side; the transcript is written when both are done.
         recorder.onDidStart = { [weak self] session in self?.detector.recordingStarted(session) }
@@ -40,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.onWake = { [weak self] in self?.pipeline.housekeeping() }
         testSetup = TestSetupWindowController(recorder: recorder)
         statusItem = StatusItemController(state: state, recorder: recorder, testSetup: testSetup,
-                                          models: models, pipeline: pipeline, output: output, calendar: calendar)
+                                          models: models, pipeline: pipeline, output: output, calendar: calendar, contacts: contacts)
         statusItem.onOpenRecording = { [weak self] directory in self?.metadataDialog.show(directory) }
         statusItem.onEditLiveDetails = { [weak self] in self?.editLiveDetails() }
         controlWindow = ControlWindowController(state: state, recorder: recorder, testSetup: testSetup)
@@ -68,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Notifier.requestAuthorization()
         calendar.start()
+        contacts.initialize(from: ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting))
         models.ensureModel()  // First launch: downloads the Whisper model in the background.
         DispatchQueue.main.async { [self] in
             Recovery.checkOnLaunch { directories in directories.forEach(self.pipeline.enqueue) }

@@ -6,12 +6,14 @@ import Foundation
 /// sampled every 15 seconds as a fallback. Never blocks recording.
 final class MeetingDetector {
     private let calendar: CalendarFile
+    private let contacts: ContactStore
     private var timer: Timer?
     private weak var session: RecordingSession?
     private var seenTitles = Set<String>()
 
-    init(calendar: CalendarFile) {
+    init(calendar: CalendarFile, contacts: ContactStore) {
         self.calendar = calendar
+        self.contacts = contacts
     }
 
     func recordingStarted(_ session: RecordingSession) {
@@ -39,7 +41,7 @@ final class MeetingDetector {
         let manifest = session.manifestSnapshot
         guard manifest.meeting == nil, manifest.metadataConfirmed != true else { return }
         if let event = calendar.match(recordingStart: manifest.startDate) {
-            session.setPrefill(event.meeting(recordedStart: manifest.startDate, recordedEnd: manifest.startDate))
+            session.setPrefill(contacts.apply(event.meeting(recordedStart: manifest.startDate, recordedEnd: manifest.startDate)))
             Log.info("Calendar: matched recording to \"\(event.title)\" (\(event.attendees.count) attendees)")
         }
     }

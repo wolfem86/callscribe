@@ -74,6 +74,14 @@ If the second scheduled run fails with "a file with the same name already exists
 
 The CallScribe menu shows the calendar status, e.g. "Calendar: 12 upcoming events · updated 4 min ago". If your file is somewhere else, use Settings → **Calendar File…**. The file stays in your own OneDrive; CallScribe only reads it.
 
+### Names instead of email addresses
+
+Calendar invitees often arrive as bare email addresses. CallScribe keeps a small name directory and fills in real names automatically:
+
+- In **Participants**, type a person's name over their email address (in the same spot in the list) and save. CallScribe remembers that this address is that person, and shows the name for every future meeting. Typing `Name (email)` works too.
+- Names you accept or correct are remembered, and are used for organizers and invitees before guessing from the address. The header still records both, e.g. `Jane Smith (jsmith@contoso.com)`.
+- The directory is `OneDrive/CallScribe/contacts.json` (with a local copy), so all your Macs share it. Settings → **Name Mappings…** opens it if you ever want to fix a name by hand.
+
 ### How events are matched
 
 A recording is matched to the event that's in progress when it starts, or that starts within 15 minutes of it, preferring Teams meetings and then the closest start time. It's checked again when the recording stops. Matched details pre-fill the dialog (and **⌃⌥D** during the call); everything stays editable. Past participants are also suggested as you type names.

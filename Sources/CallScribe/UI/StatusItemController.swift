@@ -12,6 +12,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let pipeline: TranscriptionPipeline
     private let output: OutputManager
     private let calendar: CalendarFile
+    private let contacts: ContactStore
     private var cancellables = Set<AnyCancellable>()
     private var animationTimer: Timer?
     /// Opens the details dialog for a past recording.
@@ -20,8 +21,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var onEditLiveDetails: (() -> Void)?
 
     init(state: AppState, recorder: RecorderController, testSetup: TestSetupWindowController,
-         models: ModelManager, pipeline: TranscriptionPipeline, output: OutputManager, calendar: CalendarFile) {
+         models: ModelManager, pipeline: TranscriptionPipeline, output: OutputManager, calendar: CalendarFile,
+         contacts: ContactStore) {
         self.calendar = calendar
+        self.contacts = contacts
         self.state = state
         self.recorder = recorder
         self.testSetup = testSetup
@@ -176,6 +179,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         toggle(menu, "Open Levels Window When Recording", Settings.showLevelsOnStart, #selector(toggleLevelsOnStart))
         toggle(menu, "Mic Voice Processing", Settings.voiceProcessing, #selector(toggleVoiceProcessing))
 
+        add(menu, "Name Mappings (\(contacts.directory.entries.count))…", #selector(openNameMappings))
         add(menu, "Calendar File (\(calendar.url?.lastPathComponent ?? "not set"))…", #selector(chooseCalendarFile))
         let folderName = Settings.transcriptsFolder?.lastPathComponent ?? "not set"
         add(menu, "Transcripts Folder (\(folderName))…", #selector(chooseTranscriptsFolder))
@@ -236,6 +240,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func downloadModel() { models.ensureModel() }
     @objc private func chooseCalendarFile() { calendar.chooseFile() }
+    @objc private func openNameMappings() { contacts.openFile() }
     @objc private func openAccessibility() { TeamsWindowWatcher.openSettings() }
     @objc private func chooseTranscriptsFolder() { output.chooseFolder() }
 

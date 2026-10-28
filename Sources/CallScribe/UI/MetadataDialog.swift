@@ -43,7 +43,7 @@ final class MetadataDialogModel: ObservableObject {
         title = meeting.title == FileNaming.defaultTitle && !isEdit ? "" : meeting.title
         start = meeting.recordedStart
         end = meeting.recordedEnd
-        participants = editsInvited ? PeopleField.format(meeting.invited) : meeting.participants.joined(separator: ", ")
+        participants = editsInvited ? ParticipantsEditor.display(meeting.invited) : meeting.participants.joined(separator: ", ")
         tags = meeting.tags.isEmpty ? "" : meeting.tags.joined(separator: ", ")
         notes = meeting.notes ?? ""
         self.status = status
@@ -71,6 +71,16 @@ final class MetadataDialogModel: ObservableObject {
     }
 
     /// The values to save. An empty title falls back to the pre-filled default.
+    /// Email → name pairs to remember from the Participants edits.
+    var learnedNames: [(email: String, name: String)] {
+        guard editsInvited else { return [] }
+        var pairs = ParticipantsEditor.parse(participants, original: original.invited).learned
+        if let organizer = original.organizer, let email = organizer.email, !organizer.name.isEmpty {
+            pairs.append((email, organizer.name))
+        }
+        return pairs
+    }
+
     func meeting() -> MeetingMetadata {
         // Organizer isn't edited here; one from the calendar is kept as is.
         var meeting = original
@@ -79,7 +89,7 @@ final class MetadataDialogModel: ObservableObject {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         meeting.title = trimmedTitle.isEmpty ? MetadataPrefill.title(calendarTitle: nil, windowTitle: nil) : trimmedTitle
         if editsInvited {
-            meeting.invited = PeopleField.parse(participants, keeping: original.invited)
+            meeting.invited = ParticipantsEditor.parse(participants, original: original.invited).people
         } else {
             meeting.participants = PeopleField.splitList(participants)
         }
@@ -162,13 +172,15 @@ struct MetadataDialogView: View {
 /// One dialog window per recording.
 final class MetadataDialogController: NSObject, NSWindowDelegate {
     private let pipeline: TranscriptionPipeline
+    private let contacts: ContactStore
     /// The recording whose details are being edited live, if any.
     private weak var liveSession: RecordingSession?
     private var windows: [URL: (NSWindow, MetadataDialogModel, Timer?)] = [:]
     private var observer: NSObjectProtocol?
 
-    init(pipeline: TranscriptionPipeline) {
+    init(pipeline: TranscriptionPipeline, contacts: ContactStore) {
         self.pipeline = pipeline
+        self.contacts = contacts
         super.init()
         observer = NotificationCenter.default.addObserver(forName: .sessionChanged, object: nil, queue: .main) { [weak self] note in
             guard let self, let directory = note.object as? URL, let entry = self.windows[directory] else { return }
@@ -190,9 +202,10 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
             : TranscriptionPipeline.initialMeeting(manifest)
         let pastMeetings = ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting)
         let history = TagField.history(from: pastMeetings)
-        let model = MetadataDialogModel(directory: directory, meeting: meeting, isEdit: isEdit,
+        contacts.reload()
+        let model = MetadataDialogModel(directory: directory, meeting: contacts.apply(meeting), isEdit: isEdit,
                                         tagHistory: history, status: manifest.transcription?.state)
-        model.participantHistory = Self.participantHistory(pastMeetings)
+        model.participantHistory = Self.participantHistory(pastMeetings, contacts: contacts.directory)
 
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -237,9 +250,11 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
         let manifest = session.manifestSnapshot
         let pastMeetings = ManifestStore.allSessions(in: Paths.recordings).compactMap(\.1.meeting)
         let history = TagField.history(from: pastMeetings)
-        let model = MetadataDialogModel(directory: directory, meeting: manifest.meeting ?? TranscriptionPipeline.initialMeeting(manifest),
+        contacts.reload()
+        let model = MetadataDialogModel(directory: directory,
+                                        meeting: contacts.apply(manifest.meeting ?? TranscriptionPipeline.initialMeeting(manifest)),
                                         isEdit: false, isLive: true, tagHistory: history, status: nil)
-        model.participantHistory = Self.participantHistory(pastMeetings)
+        model.participantHistory = Self.participantHistory(pastMeetings, contacts: contacts.directory)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Call Details (Recording)"
@@ -265,10 +280,11 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
     }
 
     /// Names from past recordings' participants and invitees, by how often they appear.
-    static func participantHistory(_ meetings: [MeetingMetadata]) -> [String: Int] {
+    static func participantHistory(_ meetings: [MeetingMetadata], contacts: ContactDirectory) -> [String: Int] {
         var counts: [String: Int] = [:]
+        for entry in contacts.entries.values { counts[entry.name, default: 0] += 1 }
         for meeting in meetings {
-            for name in meeting.participants + meeting.invited.map({ $0.name.isEmpty ? ($0.email ?? "") : $0.name }) where !name.isEmpty {
+            for name in meeting.participants + meeting.invited.map({ contacts.apply($0) }).map({ $0.name.isEmpty ? ($0.email ?? "") : $0.name }) where !name.isEmpty {
                 counts[name, default: 0] += 1
             }
         }
@@ -278,6 +294,7 @@ final class MetadataDialogController: NSObject, NSWindowDelegate {
     private func save(_ directory: URL) {
         guard let (_, model, _) = windows[directory] else { return }
         let meeting = model.meeting()
+        contacts.learn(model.learnedNames)
         close(directory)
         if model.isLive {
             liveSession?.updateMeeting(meeting)
